@@ -2,26 +2,31 @@
 inference.py — Smart Meeting Scheduler
 =======================================
 Hackathon-required inference script.
-Runs all 3 tasks against the environment using the Anthropic API as the agent.
+Runs all 3 tasks against the environment using Groq (Llama) as the agent.
 Produces exact log format: [START], [STEP], [END].
 
 Usage:
     python inference.py [--task easy|medium|hard|all] [--base-url http://localhost:7860]
+
+Requirements:
+    pip install groq requests
+    export GROQ_API_KEY=your_key_here
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import anthropic
 import requests
-
+from groq import Groq
 
 BASE_URL = "http://localhost:7860"
-MODEL = "claude-sonnet-4-20250514"  
+MODEL = "llama-3.3-70b-versatile"   
 
 SYSTEM_PROMPT = """You are an expert personal calendar assistant AI agent.
 Your job is to schedule meetings on a calendar within working hours (09:00–18:00)
@@ -52,15 +57,14 @@ You MUST respond with a single valid JSON action object. Available actions:
 
 Strategy:
 - Schedule HIGH and CRITICAL priority meetings first.
-- Always verify the free_slots before placing a meeting.
+- Always check free_slots before placing a meeting.
 - Calculate end_time as start_time + duration_minutes.
 - Call done when all pending_requests are scheduled or cannot be scheduled.
 - Prefer the preferred_start time when possible, but find alternatives if blocked.
 - NEVER schedule outside 09:00–18:00.
 - NEVER overlap two meetings.
 
-Respond ONLY with the JSON action. No explanations, no markdown fences."""
-
+Respond ONLY with the JSON object. No explanations, no markdown fences, no extra text."""
 
 
 
@@ -86,12 +90,12 @@ def api_grade(base_url: str) -> Dict[str, Any]:
 
 def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     """Run a single task and return results."""
-    client = anthropic.Anthropic()
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
     print(f"\n[START] task_id={task_id} model={MODEL} timestamp={int(time.time())}")
     sys.stdout.flush()
 
-    
+    # Reset
     obs = api_reset(task_id, base_url)
     print(f"[START] observation={json.dumps(obs, separators=(',', ':'))}")
     sys.stdout.flush()
@@ -104,7 +108,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     while not done:
         step_num += 1
 
-        
+       
         user_msg = (
             f"STEP {step_num}\n\n"
             f"OBSERVATION:\n{json.dumps(obs, indent=2)}\n\n"
@@ -116,30 +120,31 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
         conversation.append({"role": "user", "content": user_msg})
 
         
-        response = client.messages.create(
+        response = client.chat.completions.create(
             model=MODEL,
             max_tokens=512,
-            system=SYSTEM_PROMPT,
-            messages=conversation,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *conversation,
+            ],
         )
-        raw_action = response.content[0].text.strip()
+        raw_action = response.choices[0].message.content.strip()
 
         
         conversation.append({"role": "assistant", "content": raw_action})
 
         
         try:
-            action = json.loads(raw_action)
+            clean = re.sub(r"```(?:json)?|```", "", raw_action).strip()
+            action = json.loads(clean)
         except json.JSONDecodeError:
-            
-            import re
-            match = re.search(r'\{.*\}', raw_action, re.DOTALL)
+            match = re.search(r"\{.*\}", raw_action, re.DOTALL)
             if match:
                 action = json.loads(match.group())
             else:
                 action = {"action_type": "done", "message": "Parse error — stopping."}
 
-    
+        
         result = api_step(action, base_url)
         step_reward = result.get("reward", 0.0)
         total_reward += step_reward
@@ -159,7 +164,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
         if done:
             break
 
-   
+    
     grade_result = api_grade(base_url)
     final_score = grade_result.get("score", 0.0)
 
@@ -181,15 +186,18 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     }
 
 
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smart Meeting Scheduler inference")
     parser.add_argument("--task", default="all", choices=["easy", "medium", "hard", "all"])
     parser.add_argument("--base-url", default=BASE_URL)
     args = parser.parse_args()
 
-    
+    if not os.environ.get("GROQ_API_KEY"):
+        print("ERROR: GROQ_API_KEY environment variable not set.", file=sys.stderr)
+        print("Get a free key at https://console.groq.com", file=sys.stderr)
+        sys.exit(1)
+
+   
     for attempt in range(30):
         try:
             r = requests.get(f"{args.base_url}/health", timeout=5)
