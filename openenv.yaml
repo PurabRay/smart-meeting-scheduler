@@ -17,9 +17,7 @@ tags:
 author: "smart-meeting-scheduler"
 license: MIT
 
-# ---------------------------------------------------------------------------
-# Server
-# ---------------------------------------------------------------------------
+
 server:
   base_url: "http://localhost:7860"
   health_endpoint: "/health"
@@ -27,9 +25,7 @@ server:
   step_endpoint: "/step"
   grade_endpoint: "/grade"
 
-# ---------------------------------------------------------------------------
-# Observation space
-# ---------------------------------------------------------------------------
+
 observation_space:
   type: object
   description: "What the agent sees at each step."
@@ -73,9 +69,7 @@ observation_space:
     last_action_result: { type: string }
     total_reward_so_far: { type: number }
 
-# ---------------------------------------------------------------------------
-# Action space
-# ---------------------------------------------------------------------------
+
 action_space:
   type: discriminated_union
   discriminator: action_type
@@ -113,9 +107,7 @@ action_space:
       fields:
         message: { type: string, default: "Schedule complete." }
 
-# ---------------------------------------------------------------------------
-# Reward function
-# ---------------------------------------------------------------------------
+
 reward:
   description: >
     Dense reward signal designed to guide the agent toward conflict-free,
@@ -151,9 +143,7 @@ reward:
       formula: "0.1 per idle hour (hard task only)"
       description: "Encourages dense packing of meetings in the hard task."
 
-# ---------------------------------------------------------------------------
-# Tasks
-# ---------------------------------------------------------------------------
+
 tasks:
   - id: easy
     name: "Schedule 3 Simple Meetings"
@@ -195,9 +185,7 @@ tasks:
     grader: "graders.grade_hard"
     grader_score_range: [0.0, 1.0]
 
-# ---------------------------------------------------------------------------
-# Grader spec (summary)
-# ---------------------------------------------------------------------------
+
 grader_spec:
   easy:
     completion_weight: 0.60
