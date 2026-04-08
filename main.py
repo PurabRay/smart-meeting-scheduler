@@ -1,21 +1,10 @@
-"""
-FastAPI server for the Smart Meeting Scheduler OpenEnv environment.
-
-Endpoints:
-  GET  /                  → health check / metadata
-  POST /reset             → reset environment to a task
-  POST /step              → take an action
-  GET  /state             → introspect current state
-  POST /grade             → compute final score
-  GET  /tasks             → list available tasks
-"""
 from __future__ import annotations
 
 import traceback
 from typing import Any, Dict, List, Optional, Union
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -43,42 +32,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 _env = MeetingSchedulerEnv()
 
-
-
-
 class ResetRequest(BaseModel):
-    task_id: str  # "easy" | "medium" | "hard"
-
+    task_id: Optional[str] = "easy"
 
 class StepRequest(BaseModel):
     action_type: str
-  
     title: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     priority: Optional[str] = None
     attendees: Optional[List[str]] = None
     request_id: Optional[str] = None
-    #CancelEvent
     event_id: Optional[str] = None
-    #RescheduleEvent
     new_start_time: Optional[str] = None
     new_end_time: Optional[str] = None
-    #QueryFreeSlots
     min_duration_minutes: Optional[int] = 30
-   
     message: Optional[str] = "Schedule complete."
-
 
 class StepResponse(BaseModel):
     observation: Dict[str, Any]
     reward: float
     done: bool
     info: Dict[str, Any]
-
 
 class GradeResponse(BaseModel):
     task_id: str
@@ -87,9 +64,6 @@ class GradeResponse(BaseModel):
     steps_used: int
     scheduled_count: int
     pending_count: int
-
-
-
 
 def _parse_action(req: StepRequest) -> Action:
     at = req.action_type
@@ -117,9 +91,6 @@ def _parse_action(req: StepRequest) -> Action:
     else:
         raise ValueError(f"Unknown action_type: {at!r}")
 
-
-
-
 @app.get("/")
 def root() -> Dict[str, Any]:
     return {
@@ -134,11 +105,9 @@ def root() -> Dict[str, Any]:
         ),
     }
 
-
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
-
 
 @app.get("/tasks")
 def list_tasks() -> Dict[str, Any]:
@@ -151,14 +120,17 @@ def list_tasks() -> Dict[str, Any]:
         for task_id, task in TASKS.items()
     }
 
-
 @app.post("/reset")
-def reset(req: ResetRequest) -> Dict[str, Any]:
-    if req.task_id not in TASKS:
-        raise HTTPException(status_code=400, detail=f"Unknown task_id. Choose from {list(TASKS)}")
-    obs = _env.reset(req.task_id)
+def reset(req: Optional[ResetRequest] = Body(None)) -> Dict[str, Any]:
+    task_id = "easy"
+    if req and req.task_id:
+        task_id = req.task_id.lower()
+    
+    if task_id not in TASKS:
+        task_id = "easy"
+        
+    obs = _env.reset(task_id)
     return obs.model_dump()
-
 
 @app.post("/step")
 def step(req: StepRequest) -> StepResponse:
@@ -180,11 +152,9 @@ def step(req: StepRequest) -> StepResponse:
         info=info,
     )
 
-
 @app.get("/state")
 def get_state() -> Dict[str, Any]:
     return _env.get_state().model_dump()
-
 
 @app.post("/grade")
 def grade_current() -> GradeResponse:
@@ -200,9 +170,6 @@ def grade_current() -> GradeResponse:
         scheduled_count=len(state.scheduled_events),
         pending_count=len(state.pending_requests),
     )
-
-
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=7860, reload=False)
