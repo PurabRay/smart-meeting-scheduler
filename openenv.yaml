@@ -1,0 +1,218 @@
+name: smart-meeting-scheduler
+version: "1.0.0"
+description: >
+  A realistic OpenEnv environment where an AI agent acts as a personal
+  calendar assistant. It receives meeting requests with different priorities,
+  durations, and preferred times, and must schedule, reschedule, or cancel
+  them without conflicts, while respecting working hours (09:00–18:00) and
+  optimising for efficiency and user preferences.
+
+tags:
+  - calendar
+  - scheduling
+  - workflow-automation
+  - planning
+  - real-world
+
+author: "smart-meeting-scheduler"
+license: MIT
+
+# ---------------------------------------------------------------------------
+# Server
+# ---------------------------------------------------------------------------
+server:
+  base_url: "http://localhost:7860"
+  health_endpoint: "/health"
+  reset_endpoint: "/reset"
+  step_endpoint: "/step"
+  grade_endpoint: "/grade"
+
+# ---------------------------------------------------------------------------
+# Observation space
+# ---------------------------------------------------------------------------
+observation_space:
+  type: object
+  description: "What the agent sees at each step."
+  fields:
+    scheduled_events:
+      type: array
+      description: "List of currently scheduled calendar events."
+      items:
+        event_id: { type: string }
+        title: { type: string }
+        start_time: { type: string, format: "HH:MM" }
+        end_time: { type: string, format: "HH:MM" }
+        priority: { type: string, enum: [low, medium, high, critical] }
+        attendees: { type: array, items: { type: string } }
+
+    pending_requests:
+      type: array
+      description: "Meeting requests still waiting to be scheduled."
+      items:
+        request_id: { type: string }
+        title: { type: string }
+        duration_minutes: { type: integer }
+        priority: { type: string, enum: [low, medium, high, critical] }
+        preferred_start: { type: string, nullable: true, format: "HH:MM" }
+        attendees: { type: array, items: { type: string } }
+        flexible: { type: boolean }
+
+    free_slots:
+      type: array
+      description: "Available time windows within working hours."
+      items:
+        start_time: { type: string }
+        end_time: { type: string }
+        duration_minutes: { type: integer }
+
+    current_time: { type: string, format: "HH:MM" }
+    working_hours_start: { type: string, default: "09:00" }
+    working_hours_end: { type: string, default: "18:00" }
+    step_number: { type: integer }
+    max_steps: { type: integer }
+    last_action_result: { type: string }
+    total_reward_so_far: { type: number }
+
+# ---------------------------------------------------------------------------
+# Action space
+# ---------------------------------------------------------------------------
+action_space:
+  type: discriminated_union
+  discriminator: action_type
+  description: "One action per step. Choose the action_type and provide required fields."
+  actions:
+    create_event:
+      description: "Schedule a new meeting on the calendar."
+      fields:
+        title: { type: string, required: true }
+        start_time: { type: string, format: "HH:MM", required: true }
+        end_time: { type: string, format: "HH:MM", required: true }
+        priority: { type: string, enum: [low, medium, high, critical], default: medium }
+        attendees: { type: array, items: { type: string }, default: [] }
+        request_id: { type: string, nullable: true, description: "Link to MeetingRequest" }
+
+    cancel_event:
+      description: "Remove a scheduled meeting."
+      fields:
+        event_id: { type: string, required: true }
+
+    reschedule_event:
+      description: "Move an existing event to a new time slot."
+      fields:
+        event_id: { type: string, required: true }
+        new_start_time: { type: string, format: "HH:MM", required: true }
+        new_end_time: { type: string, format: "HH:MM", required: true }
+
+    query_free_slots:
+      description: "Ask the environment to return available time windows."
+      fields:
+        min_duration_minutes: { type: integer, default: 30 }
+
+    done:
+      description: "Signal that scheduling is complete."
+      fields:
+        message: { type: string, default: "Schedule complete." }
+
+# ---------------------------------------------------------------------------
+# Reward function
+# ---------------------------------------------------------------------------
+reward:
+  description: >
+    Dense reward signal designed to guide the agent toward conflict-free,
+    efficient scheduling within working hours.
+  components:
+    create_success:
+      formula: "2 + priority_weight(event)"
+      range: [3, 6]
+      description: "Reward for successfully creating an event without conflict."
+    preferred_time_bonus:
+      value: 1.0
+      description: "Bonus when event is placed at the requested preferred_start time."
+    overlap_penalty:
+      value: -5.0
+      description: "Penalty per conflict when a new event overlaps an existing one."
+    out_of_hours_penalty:
+      value: -1.0
+      description: "Penalty for scheduling outside 09:00–18:00."
+    reschedule_success:
+      value: 1.0
+      description: "Small reward for a successful conflict-free reschedule."
+    cancel_penalty:
+      formula: "-0.5 * priority_weight(event)"
+      description: "Penalty for cancelling; larger for higher-priority meetings."
+    completion_bonus:
+      value: 10.0
+      description: "Bonus when ALL pending requests are scheduled."
+    efficiency_bonus:
+      formula: "3.0 * (1 - steps_used / max_steps)"
+      range: [0, 3]
+      description: "Reward for finishing with fewer steps."
+    gap_penalty_hard_task:
+      formula: "0.1 per idle hour (hard task only)"
+      description: "Encourages dense packing of meetings in the hard task."
+
+# ---------------------------------------------------------------------------
+# Tasks
+# ---------------------------------------------------------------------------
+tasks:
+  - id: easy
+    name: "Schedule 3 Simple Meetings"
+    description: >
+      Schedule 3 meetings with clear, non-overlapping preferred time windows.
+      No conflicts expected if meetings are placed correctly.
+      Priority: 1x HIGH, 2x MEDIUM.
+    difficulty: easy
+    max_steps: 20
+    num_requests: 3
+    grader: "graders.grade_easy"
+    grader_score_range: [0.0, 1.0]
+    example_requests:
+      - { title: "Team Standup", duration: 30, priority: high, preferred_start: "09:00" }
+      - { title: "Product Review", duration: 60, priority: medium, preferred_start: "11:00" }
+      - { title: "1-on-1 with Manager", duration: 30, priority: high, preferred_start: "15:00" }
+
+  - id: medium
+    name: "Resolve 5 Priority-Conflicting Meetings"
+    description: >
+      Schedule 5 meetings with mixed priorities. Some preferred windows overlap,
+      requiring the agent to resolve conflicts by rescheduling or prioritising.
+      Priority mix: 1x CRITICAL, 2x HIGH, 1x MEDIUM, 1x LOW.
+    difficulty: medium
+    max_steps: 25
+    num_requests: 5
+    grader: "graders.grade_medium"
+    grader_score_range: [0.0, 1.0]
+
+  - id: hard
+    name: "Pack 8 Meetings in a Full Day"
+    description: >
+      Schedule 8 meetings with tight time windows. High-priority meetings must
+      be placed first. Minimise idle gaps in the workday for maximum efficiency.
+      Priority mix: 2x CRITICAL, 3x HIGH, 2x MEDIUM, 1x LOW.
+    difficulty: hard
+    max_steps: 35
+    num_requests: 8
+    grader: "graders.grade_hard"
+    grader_score_range: [0.0, 1.0]
+
+# ---------------------------------------------------------------------------
+# Grader spec (summary)
+# ---------------------------------------------------------------------------
+grader_spec:
+  easy:
+    completion_weight: 0.60
+    no_overlap_weight: 0.30
+    working_hours_weight: 0.10
+
+  medium:
+    completion_weight: 0.50
+    no_overlap_weight: 0.25
+    priority_adherence_weight: 0.15
+    working_hours_weight: 0.10
+
+  hard:
+    completion_weight: 0.40
+    no_overlap_weight: 0.20
+    priority_adherence_weight: 0.20
+    working_hours_weight: 0.10
+    gap_efficiency_weight: 0.10
