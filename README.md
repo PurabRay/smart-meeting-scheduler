@@ -9,7 +9,7 @@ Smart Meeting Scheduler — OpenEnv Environment
 To Run locally
 bash
 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/smart-meeting-scheduler
+git clone https://github.com/PurabRay/smart-meeting-scheduler
 cd smart-meeting-scheduler
 
 2. Install dependencies
