@@ -43,13 +43,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global environment instance (single-session for HF Space demo)
+
 _env = MeetingSchedulerEnv()
 
 
-# ---------------------------------------------------------------------------
-# Request / Response schemas
-# ---------------------------------------------------------------------------
+
 
 class ResetRequest(BaseModel):
     task_id: str  # "easy" | "medium" | "hard"
@@ -57,21 +55,21 @@ class ResetRequest(BaseModel):
 
 class StepRequest(BaseModel):
     action_type: str
-    # CreateEvent fields
+  
     title: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     priority: Optional[str] = None
     attendees: Optional[List[str]] = None
     request_id: Optional[str] = None
-    # CancelEvent
+    #CancelEvent
     event_id: Optional[str] = None
-    # RescheduleEvent
+    #RescheduleEvent
     new_start_time: Optional[str] = None
     new_end_time: Optional[str] = None
-    # QueryFreeSlots
+    #QueryFreeSlots
     min_duration_minutes: Optional[int] = 30
-    # Done
+   
     message: Optional[str] = "Schedule complete."
 
 
@@ -91,9 +89,7 @@ class GradeResponse(BaseModel):
     pending_count: int
 
 
-# ---------------------------------------------------------------------------
-# Helper: parse action from flat StepRequest
-# ---------------------------------------------------------------------------
+
 
 def _parse_action(req: StepRequest) -> Action:
     at = req.action_type
@@ -122,9 +118,7 @@ def _parse_action(req: StepRequest) -> Action:
         raise ValueError(f"Unknown action_type: {at!r}")
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+
 
 @app.get("/")
 def root() -> Dict[str, Any]:
@@ -208,7 +202,7 @@ def grade_current() -> GradeResponse:
     )
 
 
-# ---------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=7860, reload=False)
