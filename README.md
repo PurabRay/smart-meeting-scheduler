@@ -130,7 +130,7 @@ API Endpoints
 | `GET` | `/state` | Inspect full environment state |
 | `POST` | `/grade` | Get final score `{ "score": 0.95 }` |
 
-📁 Project Structure
+Project Structure
 
 smart-meeting-scheduler/
 ├── main.py            # FastAPI server (entry point)
