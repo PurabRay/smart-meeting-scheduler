@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart-meeting-scheduler"
+version = "1.0.0"
+description = "A realistic AI calendar assistant environment for the OpenEnv Hackathon."
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "requests",
+    "openai"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
