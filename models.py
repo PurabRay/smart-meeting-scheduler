@@ -12,10 +12,6 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator
 
 
-# ---------------------------------------------------------------------------
-# Primitives
-# ---------------------------------------------------------------------------
-
 class Priority(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -35,11 +31,11 @@ class CalendarEvent(BaseModel):
     """A scheduled event on the calendar."""
     event_id: str = Field(default_factory=lambda: str(uuid4())[:8])
     title: str
-    start_time: str          # "HH:MM"  (24-hour, within working day)
-    end_time: str            # "HH:MM"
+    start_time: str          #"HH:MM"  (24-hour,within working day)
+    end_time: str            #"HH:MM"
     priority: Priority = Priority.MEDIUM
     attendees: List[str] = Field(default_factory=list)
-    date: str = "2024-01-15"  # ISO date string; single-day env
+    date: str = "2024-01-15"  #ISO date string;single-day env
 
     @field_validator("start_time", "end_time")
     @classmethod
@@ -73,10 +69,10 @@ class MeetingRequest(BaseModel):
     title: str
     duration_minutes: int
     priority: Priority = Priority.MEDIUM
-    preferred_start: Optional[str] = None   # "HH:MM" or None
-    preferred_end: Optional[str] = None     # latest possible end "HH:MM"
+    preferred_start: Optional[str] = None   #"HH:MM" or None
+    preferred_end: Optional[str] = None     #latest possible end "HH:MM"
     attendees: List[str] = Field(default_factory=list)
-    flexible: bool = True                   # can be rescheduled?
+    flexible: bool = True                   
 
 
 class FreeSlot(BaseModel):
@@ -85,15 +81,13 @@ class FreeSlot(BaseModel):
     duration_minutes: int
 
 
-# ---------------------------------------------------------------------------
-# Observation
-# ---------------------------------------------------------------------------
+
 
 class Observation(BaseModel):
     """Everything the agent can see at each step."""
     scheduled_events: List[CalendarEvent] = Field(default_factory=list)
     pending_requests: List[MeetingRequest] = Field(default_factory=list)
-    current_time: str = "09:00"       # simulated clock
+    current_time: str = "09:00"       #simulated clock
     working_hours_start: str = "09:00"
     working_hours_end: str = "18:00"
     step_number: int = 0
@@ -103,18 +97,15 @@ class Observation(BaseModel):
     total_reward_so_far: float = 0.0
 
 
-# ---------------------------------------------------------------------------
-# Actions
-# ---------------------------------------------------------------------------
 
 class CreateEvent(BaseModel):
     action_type: Literal["create_event"] = "create_event"
     title: str
-    start_time: str   # "HH:MM"
-    end_time: str     # "HH:MM"
+    start_time: str  
+    end_time: str     
     priority: Priority = Priority.MEDIUM
     attendees: List[str] = Field(default_factory=list)
-    request_id: Optional[str] = None   # links to a MeetingRequest
+    request_id: Optional[str] = None   
 
 
 class CancelEvent(BaseModel):
@@ -139,13 +130,11 @@ class Done(BaseModel):
     message: str = "Schedule complete."
 
 
-# Discriminated union – the agent picks one per step
+
 Action = Union[CreateEvent, CancelEvent, RescheduleEvent, QueryFreeSlots, Done]
 
 
-# ---------------------------------------------------------------------------
-# State  (internal, not exposed to agent directly)
-# ---------------------------------------------------------------------------
+
 
 class EnvironmentState(BaseModel):
     task_id: str
