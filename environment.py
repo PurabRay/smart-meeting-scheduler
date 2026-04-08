@@ -17,12 +17,8 @@ from models import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Task definitions
-# ---------------------------------------------------------------------------
-
-WORKING_START = 9 * 60   # 09:00 in minutes
-WORKING_END = 18 * 60    # 18:00 in minutes
+WORKING_START = 9 * 60   
+WORKING_END = 18 * 60    
 
 
 def _t(hhmm: str) -> int:
@@ -34,7 +30,6 @@ def _t(hhmm: str) -> int:
 def _fmt(minutes: int) -> str:
     """Convert minutes since midnight to HH:MM."""
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
-
 
 TASKS: Dict[str, Dict[str, Any]] = {
     "easy": {
@@ -146,11 +141,6 @@ TASKS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _compute_free_slots(
     events: List[CalendarEvent],
     min_duration: int = 0,
@@ -195,11 +185,6 @@ def _within_working_hours(event: CalendarEvent) -> bool:
         and event.start_minutes() < event.end_minutes()
     )
 
-
-# ---------------------------------------------------------------------------
-# Environment class
-# ---------------------------------------------------------------------------
-
 class MeetingSchedulerEnv:
     """
     OpenEnv-compatible Meeting Scheduler environment.
@@ -222,7 +207,6 @@ class MeetingSchedulerEnv:
         )
         return self._make_observation()
 
-    # ------------------------------------------------------------------
     def step(self, action: Action) -> Tuple[Observation, float, bool, Dict[str, Any]]:
         """
         Returns (observation, reward, done, info).
@@ -235,20 +219,20 @@ class MeetingSchedulerEnv:
         reward = 0.0
         info: Dict[str, Any] = {}
 
-        # ---- Dispatch ------------------------------------------------
-        act_type = action.action_type  # type: ignore[union-attr]
+        
+        act_type = action.action_type  #type: ignore[union-attr]
 
         if act_type == "create_event":
-            reward, info = self._handle_create(action)  # type: ignore[arg-type]
+            reward, info = self._handle_create(action)  #type: ignore[arg-type]
 
         elif act_type == "cancel_event":
-            reward, info = self._handle_cancel(action)  # type: ignore[arg-type]
+            reward, info = self._handle_cancel(action)  #type: ignore[arg-type]
 
         elif act_type == "reschedule_event":
-            reward, info = self._handle_reschedule(action)  # type: ignore[arg-type]
+            reward, info = self._handle_reschedule(action)  #type: ignore[arg-type]
 
         elif act_type == "query_free_slots":
-            reward, info = self._handle_query(action)  # type: ignore[arg-type]
+            reward, info = self._handle_query(action)  #type: ignore[arg-type]
 
         elif act_type == "done":
             reward, info = self._handle_done()
@@ -258,7 +242,6 @@ class MeetingSchedulerEnv:
             reward = -1.0
             info = {"error": f"Unknown action type: {act_type}"}
 
-        # ---- Step limit ----------------------------------------------
         if self.state.step_number >= self.state.max_steps and not self.state.done:
             self.state.done = True
             info["timeout"] = True
@@ -269,12 +252,10 @@ class MeetingSchedulerEnv:
         obs = self._make_observation(last_result=info.get("message", str(info)))
         return obs, reward, self.state.done, info
 
-    # ------------------------------------------------------------------
-    # Action handlers
-    # ------------------------------------------------------------------
+    
 
     def _handle_create(self, action: CreateEvent) -> Tuple[float, Dict]:
-        # Build candidate event
+        #Building candidate event
         try:
             candidate = CalendarEvent(
                 title=action.title,
@@ -286,34 +267,34 @@ class MeetingSchedulerEnv:
         except Exception as exc:
             return -1.0, {"error": str(exc), "message": f"Invalid event parameters: {exc}"}
 
-        # Working hours check
+        
         if not _within_working_hours(candidate):
             return -1.0, {"message": "⚠ Scheduled outside working hours (09:00–18:00). -1 penalty."}
 
-        # Conflict check
+        #Conflict check
         if _has_conflict(candidate, self.state.scheduled_events):
             return -5.0, {"message": f"❌ Conflict detected for '{action.title}'. -5 penalty."}
 
-        # Accept
+        #Accept
         self.state.scheduled_events.append(candidate)
 
-        # Reward: base + priority bonus
+        #Reward: base + priority bonus
         priority_bonus = PRIORITY_WEIGHT[candidate.priority]
         reward = 2.0 + priority_bonus
 
-        # Preferred time adherence bonus
+        #Preferred time adherence bonus
         linked_req = next(
             (r for r in self.state.pending_requests if r.request_id == action.request_id),
             None,
         )
         if linked_req:
             if linked_req.preferred_start and candidate.start_time == linked_req.preferred_start:
-                reward += 1.0  # exact preferred time
+                reward += 1.0  #xact preferred time
             self.state.pending_requests.remove(linked_req)
             self.state.completed_request_ids.append(linked_req.request_id)
 
         msg = (
-            f"✅ Created '{candidate.title}' ({candidate.start_time}–{candidate.end_time}). "
+            f"Created '{candidate.title}' ({candidate.start_time}–{candidate.end_time}). "
             f"Reward +{reward:.1f}"
         )
         return reward, {"message": msg, "event_id": candidate.event_id}
@@ -325,7 +306,7 @@ class MeetingSchedulerEnv:
 
         self.state.scheduled_events.remove(target)
         self.state.cancelled_event_ids.append(action.event_id)
-        # Cancelling a high-priority event incurs a penalty
+        #Cancelling a high-priority event incurs a penalty
         penalty = -PRIORITY_WEIGHT[target.priority] * 0.5
         msg = f"🗑 Cancelled '{target.title}'. Reward {penalty:.1f}"
         return penalty, {"message": msg}
@@ -350,15 +331,15 @@ class MeetingSchedulerEnv:
 
         others = [e for e in self.state.scheduled_events if e.event_id != target.event_id]
         if _has_conflict(updated, others):
-            return -5.0, {"message": f"❌ Conflict on reschedule of '{target.title}'. -5 penalty."}
+            return -5.0, {"message": f"Conflict on reschedule of '{target.title}'. -5 penalty."}
 
         self.state.scheduled_events.remove(target)
         self.state.scheduled_events.append(updated)
-        return 1.0, {"message": f"🔄 Rescheduled '{target.title}' to {action.new_start_time}–{action.new_end_time}. +1"}
+        return 1.0, {"message": f"Rescheduled '{target.title}' to {action.new_start_time}–{action.new_end_time}. +1"}
 
     def _handle_query(self, action: QueryFreeSlots) -> Tuple[float, Dict]:
         slots = _compute_free_slots(self.state.scheduled_events, action.min_duration_minutes)
-        msg = f"🔍 {len(slots)} free slot(s) of ≥{action.min_duration_minutes} min found."
+        msg = f"{len(slots)} free slot(s) of ≥{action.min_duration_minutes} min found."
         return 0.0, {"message": msg, "free_slots": [s.model_dump() for s in slots]}
 
     def _handle_done(self) -> Tuple[float, Dict]:
@@ -375,20 +356,20 @@ class MeetingSchedulerEnv:
                 if a.overlaps(b):
                     overlap_penalty += 5.0
 
-        # Bonus: all requests scheduled
+        # Bonus:all requests scheduled
         completion_bonus = 10.0 if n_pending == 0 else 0.0
 
-        # Efficiency bonus: fewer steps = more bonus (max 3)
+        # Efficiency bonus:fewer steps = more bonus (max 3)
         steps_used = self.state.step_number
         steps_limit = self.state.max_steps
         efficiency_bonus = max(0.0, 3.0 * (1 - steps_used / steps_limit))
 
-        # Gap penalty for hard task (encourage dense packing)
+        #Gap penalty for hard task (encouraging dense packing)
         gap_penalty = 0.0
         if self.state.task_id == "hard" and evs:
             slots = _compute_free_slots(evs, 0)
             total_gap = sum(s.duration_minutes for s in slots)
-            gap_penalty = total_gap / 60.0 * 0.1  # 0.1 per hour of gaps
+            gap_penalty = total_gap / 60.0 * 0.1  #0.1 per hour of gaps
 
         reward = completion_bonus + efficiency_bonus - overlap_penalty - gap_penalty
         msg = (
@@ -399,7 +380,6 @@ class MeetingSchedulerEnv:
         )
         return reward, {"message": msg, "scheduled": n_scheduled, "total": n_total}
 
-    # ------------------------------------------------------------------
     def _make_observation(self, last_result: str = "") -> Observation:
         free = _compute_free_slots(self.state.scheduled_events, 0)
         return Observation(
@@ -417,6 +397,5 @@ class MeetingSchedulerEnv:
             total_reward_so_far=self.state.total_reward,
         )
 
-    # ------------------------------------------------------------------
     def get_state(self) -> EnvironmentState:
         return deepcopy(self.state)
