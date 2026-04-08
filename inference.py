@@ -19,12 +19,9 @@ from typing import Any, Dict, List, Optional
 import anthropic
 import requests
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
 
 BASE_URL = "http://localhost:7860"
-MODEL = "claude-sonnet-4-20250514"  # Use Claude Sonnet 4 for agent
+MODEL = "claude-sonnet-4-20250514"  
 
 SYSTEM_PROMPT = """You are an expert personal calendar assistant AI agent.
 Your job is to schedule meetings on a calendar within working hours (09:00–18:00)
@@ -65,9 +62,7 @@ Strategy:
 Respond ONLY with the JSON action. No explanations, no markdown fences."""
 
 
-# ---------------------------------------------------------------------------
-# API helpers
-# ---------------------------------------------------------------------------
+
 
 def api_reset(task_id: str, base_url: str) -> Dict[str, Any]:
     r = requests.post(f"{base_url}/reset", json={"task_id": task_id})
@@ -87,9 +82,7 @@ def api_grade(base_url: str) -> Dict[str, Any]:
     return r.json()
 
 
-# ---------------------------------------------------------------------------
-# Agent loop
-# ---------------------------------------------------------------------------
+
 
 def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     """Run a single task and return results."""
@@ -98,7 +91,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     print(f"\n[START] task_id={task_id} model={MODEL} timestamp={int(time.time())}")
     sys.stdout.flush()
 
-    # Reset
+    
     obs = api_reset(task_id, base_url)
     print(f"[START] observation={json.dumps(obs, separators=(',', ':'))}")
     sys.stdout.flush()
@@ -111,7 +104,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     while not done:
         step_num += 1
 
-        # Build user message from observation
+        
         user_msg = (
             f"STEP {step_num}\n\n"
             f"OBSERVATION:\n{json.dumps(obs, indent=2)}\n\n"
@@ -122,7 +115,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
         )
         conversation.append({"role": "user", "content": user_msg})
 
-        # Call Claude
+        
         response = client.messages.create(
             model=MODEL,
             max_tokens=512,
@@ -131,14 +124,14 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
         )
         raw_action = response.content[0].text.strip()
 
-        # Add assistant reply to conversation
+        
         conversation.append({"role": "assistant", "content": raw_action})
 
-        # Parse action
+        
         try:
             action = json.loads(raw_action)
         except json.JSONDecodeError:
-            # Try to extract JSON from the text
+            
             import re
             match = re.search(r'\{.*\}', raw_action, re.DOTALL)
             if match:
@@ -146,7 +139,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
             else:
                 action = {"action_type": "done", "message": "Parse error — stopping."}
 
-        # Execute action
+    
         result = api_step(action, base_url)
         step_reward = result.get("reward", 0.0)
         total_reward += step_reward
@@ -166,7 +159,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
         if done:
             break
 
-    # Grade
+   
     grade_result = api_grade(base_url)
     final_score = grade_result.get("score", 0.0)
 
@@ -188,9 +181,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smart Meeting Scheduler inference")
@@ -198,7 +189,7 @@ def main() -> None:
     parser.add_argument("--base-url", default=BASE_URL)
     args = parser.parse_args()
 
-    # Wait for server to be ready
+    
     for attempt in range(30):
         try:
             r = requests.get(f"{args.base_url}/health", timeout=5)
@@ -223,7 +214,7 @@ def main() -> None:
             print(f"[ERROR] task_id={task_id} error={exc}", file=sys.stderr)
             results.append({"task_id": task_id, "final_score": 0.0, "error": str(exc)})
 
-    # Summary
+    
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
