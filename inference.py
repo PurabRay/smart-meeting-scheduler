@@ -2,15 +2,12 @@
 inference.py — Smart Meeting Scheduler
 =======================================
 Hackathon-required inference script.
-Runs all 3 tasks against the environment using Groq (Llama) as the agent.
+Runs all 3 tasks against the environment using OpenAI Client.
 Produces exact log format: [START], [STEP], [END].
 
 Usage:
-    python inference.py [--task easy|medium|hard|all] [--base-url http://localhost:7860]
-
-Requirements:
-    pip install groq requests
-    export GROQ_API_KEY=your_key_here
+    export HF_TOKEN=your_token_here
+    python inference.py [--task easy|medium|hard|all] [--base-url https://hf.space]
 """
 from __future__ import annotations
 
@@ -23,10 +20,22 @@ import time
 from typing import Any, Dict, List
 
 import requests
-from groq import Groq
+from openai import OpenAI
+
 
 BASE_URL = "http://localhost:7860"
-MODEL = "llama-3.3-70b-versatile"   
+API_BASE_URL = os.getenv("API_BASE_URL", "https://openai.com")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+if HF_TOKEN is None:
+    print("ERROR: HF_TOKEN environment variable is required", file=sys.stderr)
+    sys.exit(1)
+
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=HF_TOKEN
+)
 
 SYSTEM_PROMPT = """You are an expert personal calendar assistant AI agent.
 Your job is to schedule meetings on a calendar within working hours (09:00–18:00)
@@ -67,7 +76,6 @@ Strategy:
 Respond ONLY with the JSON object. No explanations, no markdown fences, no extra text."""
 
 
-
 def api_reset(task_id: str, base_url: str) -> Dict[str, Any]:
     r = requests.post(f"{base_url}/reset", json={"task_id": task_id})
     r.raise_for_status()
@@ -86,13 +94,9 @@ def api_grade(base_url: str) -> Dict[str, Any]:
     return r.json()
 
 
-
-
 def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     """Run a single task and return results."""
-    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-
-    print(f"\n[START] task_id={task_id} model={MODEL} timestamp={int(time.time())}")
+    print(f"\n[START] task_id={task_id} model={MODEL_NAME} timestamp={int(time.time())}")
     sys.stdout.flush()
 
     # Reset
@@ -108,7 +112,6 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
     while not done:
         step_num += 1
 
-       
         user_msg = (
             f"STEP {step_num}\n\n"
             f"OBSERVATION:\n{json.dumps(obs, indent=2)}\n\n"
@@ -121,7 +124,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
 
         
         response = client.chat.completions.create(
-            model=MODEL,
+            model=MODEL_NAME,
             max_tokens=512,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -129,8 +132,6 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
             ],
         )
         raw_action = response.choices[0].message.content.strip()
-
-        
         conversation.append({"role": "assistant", "content": raw_action})
 
         
@@ -144,7 +145,7 @@ def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
             else:
                 action = {"action_type": "done", "message": "Parse error — stopping."}
 
-        
+       
         result = api_step(action, base_url)
         step_reward = result.get("reward", 0.0)
         total_reward += step_reward
@@ -192,12 +193,7 @@ def main() -> None:
     parser.add_argument("--base-url", default=BASE_URL)
     args = parser.parse_args()
 
-    if not os.environ.get("GROQ_API_KEY"):
-        print("ERROR: GROQ_API_KEY environment variable not set.", file=sys.stderr)
-        print("Get a free key at https://console.groq.com", file=sys.stderr)
-        sys.exit(1)
-
-   
+  
     for attempt in range(30):
         try:
             r = requests.get(f"{args.base_url}/health", timeout=5)
@@ -205,7 +201,7 @@ def main() -> None:
                 break
         except Exception:
             pass
-        print(f"Waiting for server... ({attempt + 1}/30)")
+        print(f"Waiting for server {args.base_url}... ({attempt + 1}/30)")
         time.sleep(2)
     else:
         print("ERROR: Server did not start in time.", file=sys.stderr)
