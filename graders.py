@@ -14,9 +14,6 @@ WORKING_START = 9 * 60
 WORKING_END = 18 * 60
 
 
-# ---------------------------------------------------------------------------
-# Utility
-# ---------------------------------------------------------------------------
 
 def _count_overlaps(events: list[CalendarEvent]) -> int:
     count = 0
@@ -47,9 +44,7 @@ def _overlap_score(events: list[CalendarEvent]) -> float:
     return max(0.0, 1.0 - overlaps * 0.2)
 
 
-# ---------------------------------------------------------------------------
-# Task-specific graders
-# ---------------------------------------------------------------------------
+
 
 def grade_easy(state: EnvironmentState) -> float:
     """
@@ -62,9 +57,9 @@ def grade_easy(state: EnvironmentState) -> float:
     """
     evs = state.scheduled_events
 
-    completion = _completion_ratio(state)               # 0–1
-    no_overlap = _overlap_score(evs)                    # 0–1
-    hours_ok = 1.0 if _all_within_hours(evs) else 0.5  # 0.5 or 1
+    completion = _completion_ratio(state)               
+    no_overlap = _overlap_score(evs)                    
+    hours_ok = 1.0 if _all_within_hours(evs) else 0.5  
 
     score = 0.6 * completion + 0.3 * no_overlap + 0.1 * hours_ok
     return round(min(1.0, max(0.0, score)), 4)
@@ -86,7 +81,7 @@ def grade_medium(state: EnvironmentState) -> float:
 
     no_overlap = _overlap_score(evs)
 
-    # Priority adherence: were high/critical requests completed?
+    
     high_reqs = [
         r for r in state.pending_requests
         if PRIORITY_WEIGHT[r.priority] >= 3
@@ -96,7 +91,7 @@ def grade_medium(state: EnvironmentState) -> float:
         if any(r.request_id == rid and PRIORITY_WEIGHT[r.priority] >= 3
                for r in state.pending_requests)
     )
-    # simpler: fraction of high-priority reqs still pending (bad)
+    
     high_pending_penalty = len(high_reqs) * 0.15
     priority_score = max(0.0, 1.0 - high_pending_penalty)
 
@@ -128,7 +123,7 @@ def grade_hard(state: EnvironmentState) -> float:
 
     no_overlap = _overlap_score(evs)
 
-    # Priority: count critical/high requests still pending
+    
     high_still_pending = sum(
         1 for r in state.pending_requests if PRIORITY_WEIGHT[r.priority] >= 3
     )
@@ -141,7 +136,7 @@ def grade_hard(state: EnvironmentState) -> float:
         sorted_evs = sorted(evs, key=lambda e: e.start_minutes())
         total_meeting_minutes = sum(e.duration_minutes() for e in evs)
         working_minutes = WORKING_END - WORKING_START  # 540
-        # Ideal: meetings back-to-back, minimal gaps
+        # Ideal:meetings back-to-back, minimal gaps
         scheduled_span = (
             sorted_evs[-1].end_minutes() - sorted_evs[0].start_minutes()
             if evs else 0
@@ -162,9 +157,7 @@ def grade_hard(state: EnvironmentState) -> float:
     return round(min(1.0, max(0.0, score)), 4)
 
 
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
+
 
 GRADERS: Dict[str, Callable[[EnvironmentState], float]] = {
     "easy": grade_easy,
