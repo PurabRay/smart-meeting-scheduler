@@ -6,7 +6,7 @@ Runs a task against the environment using OpenAI Client.
 Produces exact log format: [START], [STEP], [END].
 
 Usage:
-    export HF_TOKEN=hf_token
+    export HF_TOKEN=your_hf_token
     export API_BASE_URL=https://router.huggingface.co/v1
     export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
     export MY_ENV_V4_TASK=easy   # or medium / hard / all
@@ -126,7 +126,7 @@ def get_model_action(obs: Dict[str, Any], step: int, conversation: List[Dict]) -
         f"Free slots: {len(obs.get('free_slots', []))}\n\n"
         "Respond with your next action as a JSON object."
     )
-    # Keep only last 6 turns to stay within memory limits on 8GB machines
+    
     trimmed = conversation[-6:] if len(conversation) > 6 else conversation
     conversation.append({"role": "user", "content": user_msg})
 
