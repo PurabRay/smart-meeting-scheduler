@@ -173,3 +173,33 @@ def grade_current() -> GradeResponse:
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=7860, reload=False)
+
+
+@app.post("/grade/{task_id}")
+def grade_task(task_id: str) -> GradeResponse:
+    """Grade a specific task — required for multi-task enumeration by openenv validate."""
+    task_id = task_id.lower()
+    if task_id not in TASKS:
+        raise HTTPException(status_code=404, detail=f"Unknown task_id {task_id!r}. Choose from {list(TASKS)}")
+    _env.reset(task_id)
+    state = _env.get_state()
+    score = grade(state)
+    return GradeResponse(
+        task_id=state.task_id,
+        score=score,
+        total_reward=state.total_reward,
+        steps_used=state.step_number,
+        scheduled_count=len(state.scheduled_events),
+        pending_count=len(state.pending_requests),
+    )
+
+@app.get("/graders")
+def list_graders() -> Dict[str, Any]:
+    """Enumerate graders for all tasks — helps openenv validate discover them."""
+    return {
+        task_id: {
+            "grader": f"graders.grade_{task_id}",
+            "score_range": [0.05, 0.95],
+        }
+        for task_id in TASKS
+    }
