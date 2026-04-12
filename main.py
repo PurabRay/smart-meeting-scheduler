@@ -175,12 +175,47 @@ if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=7860, reload=False)
 
 
+
+
+@app.get("/metadata")
+def metadata() -> Dict[str, Any]:
+    """Required by openenv validate."""
+    return {
+        "name": "Smart Meeting Scheduler",
+        "version": "1.0.0",
+        "description": (
+            "AI calendar assistant environment. The agent receives meeting "
+            "requests and must schedule them without conflicts, within "
+            "working hours (09:00-18:00), prioritising by urgency."
+        ),
+        "tasks": [
+            {"id": "easy",   "difficulty": "easy",   "grader": "graders.grade_easy"},
+            {"id": "medium", "difficulty": "medium",  "grader": "graders.grade_medium"},
+            {"id": "hard",   "difficulty": "hard",    "grader": "graders.grade_hard"},
+        ],
+    }
+
+@app.get("/schema")
+def schema() -> Dict[str, Any]:
+    """Required by openenv validate."""
+    return {
+        "action": {
+            "type": "object",
+            "properties": {
+                "action_type": {"type": "string",
+                    "enum": ["create_event","cancel_event","reschedule_event","query_free_slots","done"]},
+            },
+        },
+        "observation": {"type": "object"},
+        "state": {"type": "object"},
+    }
+
 @app.post("/grade/{task_id}")
 def grade_task(task_id: str) -> GradeResponse:
-    """Grade a specific task — required for multi-task enumeration by openenv validate."""
+    """Grade a specific task — required for multi-task enumeration."""
     task_id = task_id.lower()
     if task_id not in TASKS:
-        raise HTTPException(status_code=404, detail=f"Unknown task_id {task_id!r}. Choose from {list(TASKS)}")
+        raise HTTPException(status_code=404, detail=f"Unknown task_id {task_id!r}")
     _env.reset(task_id)
     state = _env.get_state()
     score = grade(state)
@@ -195,7 +230,7 @@ def grade_task(task_id: str) -> GradeResponse:
 
 @app.get("/graders")
 def list_graders() -> Dict[str, Any]:
-    """Enumerate graders for all tasks — helps openenv validate discover them."""
+    """Enumerate graders for all tasks."""
     return {
         task_id: {
             "grader": f"graders.grade_{task_id}",
