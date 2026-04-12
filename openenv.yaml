@@ -155,7 +155,7 @@ tasks:
     max_steps: 20
     num_requests: 3
     grader: "graders.grade_easy"
-    grader_score_range: [0.0, 1.0]
+    grader_score_range: [0.05, 0.95]
     example_requests:
       - { title: "Team Standup", duration: 30, priority: high, preferred_start: "09:00" }
       - { title: "Product Review", duration: 60, priority: medium, preferred_start: "11:00" }
@@ -171,7 +171,7 @@ tasks:
     max_steps: 25
     num_requests: 5
     grader: "graders.grade_medium"
-    grader_score_range: [0.0, 1.0]
+    grader_score_range: [0.05, 0.95]
 
   - id: hard
     name: "Pack 8 Meetings in a Full Day"
@@ -183,7 +183,7 @@ tasks:
     max_steps: 35
     num_requests: 8
     grader: "graders.grade_hard"
-    grader_score_range: [0.0, 1.0]
+    grader_score_range: [0.05, 0.95]
 
 
 grader_spec:
