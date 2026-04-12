@@ -1,59 +1,6 @@
 spec_version: 1
 name: smart-meeting-scheduler
-version: "1.0.0"
-description: >
-  A realistic OpenEnv environment where an AI agent acts as a personal
-  calendar assistant. It receives meeting requests with different priorities,
-  durations, and preferred times, and must schedule, reschedule, or cancel
-  them without conflicts, while respecting working hours (09:00-18:00) and
-  optimising for efficiency and user preferences.
-
-type: environment
-
-runtime:
-  type: docker
-
-app:
-  port: 7860
-  health_endpoint: /health
-  reset_endpoint: /reset
-  step_endpoint: /step
-  state_endpoint: /state
-
-tags:
-  - calendar
-  - scheduling
-  - workflow-automation
-  - planning
-  - real-world
-
-tasks:
-  - id: easy
-    name: "Schedule 3 Simple Meetings"
-    description: >
-      Schedule 3 meetings with clear, non-overlapping preferred time windows.
-      No conflicts expected if meetings are placed correctly.
-    difficulty: easy
-    max_steps: 20
-    grader: graders.grade_easy
-    grader_score_range: [0.05, 0.95]
-
-  - id: medium
-    name: "Resolve 5 Priority-Conflicting Meetings"
-    description: >
-      Schedule 5 meetings with mixed priorities. Some preferred windows overlap,
-      requiring the agent to resolve conflicts by rescheduling or prioritising.
-    difficulty: medium
-    max_steps: 25
-    grader: graders.grade_medium
-    grader_score_range: [0.05, 0.95]
-
-  - id: hard
-    name: "Pack 8 Meetings in a Full Day"
-    description: >
-      Schedule 8 meetings with tight time windows. High-priority meetings must
-      be placed first. Minimise idle gaps in the workday for maximum efficiency.
-    difficulty: hard
-    max_steps: 35
-    grader: graders.grade_hard
-    grader_score_range: [0.05, 0.95]
+type: space
+runtime: fastapi
+app: main:app
+port: 7860
