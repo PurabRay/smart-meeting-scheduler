@@ -4,10 +4,15 @@ type: space
 runtime: fastapi
 app: main:app
 port: 7860
+version: "1.0.0"
+description: "AI calendar assistant environment"
 tasks:
   - id: easy
-    grader: graders.grade_easy
+    difficulty: easy
+    description: "Schedule 3 simple meetings with clear, non-overlapping time windows"
   - id: medium
-    grader: graders.grade_medium
+    difficulty: medium
+    description: "Schedule 5 meetings with mixed priorities, resolve conflicts"
   - id: hard
-    grader: graders.grade_hard
+    difficulty: hard
+    description: "Schedule 8 meetings with tight windows, minimize gaps for efficiency"
