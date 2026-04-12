@@ -2,40 +2,63 @@
 inference.py — Smart Meeting Scheduler
 =======================================
 Hackathon-required inference script.
-Runs all 3 tasks against the environment using OpenAI Client.
+Runs a task against the environment using OpenAI Client.
 Produces exact log format: [START], [STEP], [END].
 
 Usage:
-    export HF_TOKEN=your_token_here
-    python inference.py [--task easy|medium|hard|all] [--base-url https://hf.space]
+    export HF_TOKEN=hf_token
+    export API_BASE_URL=https://router.huggingface.co/v1
+    export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
+    export MY_ENV_V4_TASK=easy   # or medium / hard / all
+    python inference.py
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
 import sys
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 from openai import OpenAI
 
 
-BASE_URL = "http://localhost:7860"
-API_BASE_URL = os.getenv("API_BASE_URL", "https://openai.com")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN = os.getenv("HF_TOKEN")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN     = os.getenv("HF_TOKEN")     or os.getenv("API_KEY")
+TASK_NAME    = os.getenv("MY_ENV_V4_TASK",      "easy")   
+BENCHMARK    = os.getenv("MY_ENV_V4_BENCHMARK",  "smart-meeting-scheduler")
 
-if HF_TOKEN is None:
-    print("ERROR: HF_TOKEN environment variable is required", file=sys.stderr)
-    sys.exit(1)
+
+BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
+
 
 client = OpenAI(
     base_url=API_BASE_URL,
-    api_key=HF_TOKEN
+    api_key=HF_TOKEN or "no-key",   
 )
+
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val  = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
+        flush=True,
+    )
+
 
 SYSTEM_PROMPT = """You are an expert personal calendar assistant AI agent.
 Your job is to schedule meetings on a calendar within working hours (09:00–18:00)
@@ -76,160 +99,129 @@ Strategy:
 Respond ONLY with the JSON object. No explanations, no markdown fences, no extra text."""
 
 
-def api_reset(task_id: str, base_url: str) -> Dict[str, Any]:
-    r = requests.post(f"{base_url}/reset", json={"task_id": task_id})
+
+def api_reset(task_id: str) -> Dict[str, Any]:
+    r = requests.post(f"{BASE_URL}/reset", json={"task_id": task_id}, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+def api_step(action: Dict[str, Any]) -> Dict[str, Any]:
+    r = requests.post(f"{BASE_URL}/step", json=action, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+def api_grade() -> Dict[str, Any]:
+    r = requests.post(f"{BASE_URL}/grade", timeout=30)
     r.raise_for_status()
     return r.json()
 
 
-def api_step(action: Dict[str, Any], base_url: str) -> Dict[str, Any]:
-    r = requests.post(f"{base_url}/step", json=action)
-    r.raise_for_status()
-    return r.json()
 
+def get_model_action(obs: Dict[str, Any], step: int, conversation: List[Dict]) -> Dict[str, Any]:
+    user_msg = (
+        f"STEP {step}\n\n"
+        f"OBSERVATION:\n{json.dumps(obs, indent=2)}\n\n"
+        f"Pending requests to schedule: {len(obs.get('pending_requests', []))}\n"
+        f"Scheduled events: {len(obs.get('scheduled_events', []))}\n"
+        f"Free slots: {len(obs.get('free_slots', []))}\n\n"
+        "Respond with your next action as a JSON object."
+    )
+    # Keep only last 6 turns to stay within memory limits on 8GB machines
+    trimmed = conversation[-6:] if len(conversation) > 6 else conversation
+    conversation.append({"role": "user", "content": user_msg})
 
-def api_grade(base_url: str) -> Dict[str, Any]:
-    r = requests.post(f"{base_url}/grade")
-    r.raise_for_status()
-    return r.json()
-
-
-def run_task(task_id: str, base_url: str) -> Dict[str, Any]:
-    """Run a single task and return results."""
-    print(f"\n[START] task_id={task_id} model={MODEL_NAME} timestamp={int(time.time())}")
-    sys.stdout.flush()
-
-    # Reset
-    obs = api_reset(task_id, base_url)
-    print(f"[START] observation={json.dumps(obs, separators=(',', ':'))}")
-    sys.stdout.flush()
-
-    conversation: List[Dict[str, str]] = []
-    step_num = 0
-    total_reward = 0.0
-    done = False
-
-    while not done:
-        step_num += 1
-
-        user_msg = (
-            f"STEP {step_num}\n\n"
-            f"OBSERVATION:\n{json.dumps(obs, indent=2)}\n\n"
-            f"Pending requests to schedule: {len(obs.get('pending_requests', []))}\n"
-            f"Scheduled events: {len(obs.get('scheduled_events', []))}\n"
-            f"Free slots: {len(obs.get('free_slots', []))}\n\n"
-            "Respond with your next action as a JSON object."
-        )
-        conversation.append({"role": "user", "content": user_msg})
-
-        
+    try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             max_tokens=512,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                *conversation,
+                *trimmed,
+                {"role": "user", "content": user_msg},
             ],
         )
-        raw_action = response.choices[0].message.content.strip()
-        conversation.append({"role": "assistant", "content": raw_action})
+        raw = (response.choices[0].message.content or "").strip()
+    except Exception as exc:
+        print(f"[DEBUG] Model call failed: {exc}", flush=True)
+        raw = '{"action_type": "done", "message": "Model error."}'
 
-        
-        try:
-            clean = re.sub(r"```(?:json)?|```", "", raw_action).strip()
-            action = json.loads(clean)
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", raw_action, re.DOTALL)
-            if match:
-                action = json.loads(match.group())
-            else:
-                action = {"action_type": "done", "message": "Parse error — stopping."}
+    conversation.append({"role": "assistant", "content": raw})
 
-       
-        result = api_step(action, base_url)
-        step_reward = result.get("reward", 0.0)
-        total_reward += step_reward
-        done = result.get("done", False)
-        obs = result.get("observation", {})
-        info = result.get("info", {})
+    try:
+        clean = re.sub(r"```(?:json)?|```", "", raw).strip()
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except Exception:
+                pass
+    return {"action_type": "done", "message": "Parse error — stopping."}
 
-        print(
-            f"[STEP] step={step_num} "
-            f"action={json.dumps(action, separators=(',', ':'))} "
-            f"reward={step_reward:.3f} "
-            f"done={done} "
-            f"info={json.dumps(info, separators=(',', ':'))}"
-        )
-        sys.stdout.flush()
 
-        if done:
-            break
 
-    
-    grade_result = api_grade(base_url)
-    final_score = grade_result.get("score", 0.0)
+def run_task(task_id: str) -> None:
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
-    print(
-        f"[END] task_id={task_id} "
-        f"final_score={final_score:.4f} "
-        f"total_reward={total_reward:.3f} "
-        f"steps={step_num} "
-        f"grade={json.dumps(grade_result, separators=(',', ':'))}"
-    )
-    sys.stdout.flush()
+    obs = api_reset(task_id)
 
-    return {
-        "task_id": task_id,
-        "final_score": final_score,
-        "total_reward": total_reward,
-        "steps": step_num,
-        **grade_result,
-    }
+    conversation: List[Dict] = []
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+
+    try:
+        for step in range(1, 200):   
+            action = get_model_action(obs, step, conversation)
+            action_str = json.dumps(action, separators=(",", ":"))
+
+            result     = api_step(action)
+            reward     = float(result.get("reward", 0.0))
+            done       = bool(result.get("done", False))
+            obs        = result.get("observation", {})
+            error_msg  = result.get("info", {}).get("error") or None
+
+            rewards.append(reward)
+            steps_taken = step
+
+            log_step(step=step, action=action_str, reward=reward, done=done, error=error_msg)
+
+            if done:
+                break
+
+        grade_result = api_grade()
+        score   = float(grade_result.get("score", 0.0))
+        score   = min(max(score, 0.0), 1.0)
+        success = score > 0.0
+
+    except Exception as exc:
+        print(f"[DEBUG] run_task error: {exc}", flush=True)
+
+    finally:
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Smart Meeting Scheduler inference")
-    parser.add_argument("--task", default="all", choices=["easy", "medium", "hard", "all"])
-    parser.add_argument("--base-url", default=BASE_URL)
-    args = parser.parse_args()
-
-  
+    
     for attempt in range(30):
         try:
-            r = requests.get(f"{args.base_url}/health", timeout=5)
+            r = requests.get(f"{BASE_URL}/health", timeout=5)
             if r.status_code == 200:
                 break
         except Exception:
             pass
-        print(f"Waiting for server {args.base_url}... ({attempt + 1}/30)")
+        print(f"Waiting for server {BASE_URL}... ({attempt + 1}/30)", flush=True)
         time.sleep(2)
     else:
         print("ERROR: Server did not start in time.", file=sys.stderr)
         sys.exit(1)
 
-    tasks_to_run = ["easy", "medium", "hard"] if args.task == "all" else [args.task]
-    results = []
-
+    tasks_to_run = ["easy", "medium", "hard"] if TASK_NAME == "all" else [TASK_NAME]
     for task_id in tasks_to_run:
-        try:
-            result = run_task(task_id, args.base_url)
-            results.append(result)
-        except Exception as exc:
-            print(f"[ERROR] task_id={task_id} error={exc}", file=sys.stderr)
-            results.append({"task_id": task_id, "final_score": 0.0, "error": str(exc)})
-
-    
-    print("\n" + "=" * 60)
-    print("SUMMARY")
-    print("=" * 60)
-    for r in results:
-        score = r.get("final_score", 0.0)
-        steps = r.get("steps", "N/A")
-        print(f"  {r['task_id']:8s}  score={score:.4f}  steps={steps}")
-
-    avg = sum(r.get("final_score", 0.0) for r in results) / max(len(results), 1)
-    print(f"\n  AVERAGE SCORE: {avg:.4f}")
-    print("=" * 60)
+        run_task(task_id)
 
 
 if __name__ == "__main__":
