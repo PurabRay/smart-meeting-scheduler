@@ -13,6 +13,13 @@ from models import CalendarEvent, EnvironmentState, PRIORITY_WEIGHT
 WORKING_START = 9 * 60
 WORKING_END = 18 * 60
 
+_SCORE_MIN = 0.05   
+_SCORE_MAX = 0.95   
+
+def _clamp(score: float) -> float:
+    """Clamp to open interval (0, 1) as required by the evaluator."""
+    return round(min(_SCORE_MAX, max(_SCORE_MIN, score)), 4)
+
 
 
 def _count_overlaps(events: list[CalendarEvent]) -> int:
@@ -62,7 +69,7 @@ def grade_easy(state: EnvironmentState) -> float:
     hours_ok = 1.0 if _all_within_hours(evs) else 0.5  
 
     score = 0.6 * completion + 0.3 * no_overlap + 0.1 * hours_ok
-    return round(min(1.0, max(0.0, score)), 4)
+    return _clamp(score)
 
 
 def grade_medium(state: EnvironmentState) -> float:
@@ -103,7 +110,7 @@ def grade_medium(state: EnvironmentState) -> float:
         + 0.15 * priority_score
         + 0.10 * hours_ok
     )
-    return round(min(1.0, max(0.0, score)), 4)
+    return _clamp(score)
 
 
 def grade_hard(state: EnvironmentState) -> float:
@@ -154,7 +161,7 @@ def grade_hard(state: EnvironmentState) -> float:
         + 0.10 * hours_ok
         + 0.10 * gap_score
     )
-    return round(min(1.0, max(0.0, score)), 4)
+    return _clamp(score)
 
 
 
